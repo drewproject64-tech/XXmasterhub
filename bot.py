@@ -3,7 +3,6 @@ import logging
 import os
 import sqlite3
 from datetime import datetime, timezone
-from html import escape
 
 from aiogram import Bot, Dispatcher, F
 from aiogram.client.default import DefaultBotProperties
@@ -11,19 +10,9 @@ from aiogram.enums import ParseMode
 from aiogram.filters import Command, CommandStart
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
-from aiogram.types import (
-    KeyboardButton,
-    Message,
-    ReplyKeyboardMarkup,
-)
+from aiogram.types import KeyboardButton, Message, ReplyKeyboardMarkup
 
 TOKEN = os.getenv("BOT_TOKEN", "").strip()
-ADMIN_IDS = {
-    int(value.strip())
-    for value in os.getenv("ADMIN_IDS", "").split(",")
-    if value.strip().isdigit()
-}
-
 DB_PATH = os.getenv("DB_PATH", "gold_master_hub.db")
 
 if not TOKEN:
@@ -89,22 +78,9 @@ def remember_user(message: Message) -> None:
 def main_keyboard() -> ReplyKeyboardMarkup:
     return ReplyKeyboardMarkup(
         keyboard=[
-            [
-                KeyboardButton(text="📊 Gold Tools"),
-                KeyboardButton(text="🧮 Trading Calculators"),
-            ],
-            [
-                KeyboardButton(text="🕒 Market Sessions"),
-                KeyboardButton(text="📚 Forex Academy"),
-            ],
-            [
-                KeyboardButton(text="📈 Market Information"),
-                KeyboardButton(text="📰 Gold Market Updates"),
-            ],
-            [
-                KeyboardButton(text="⚙️ Settings"),
-                KeyboardButton(text="👤 Contact Admin"),
-            ],
+            [KeyboardButton(text="📊 Gold Tools")],
+            [KeyboardButton(text="🧮 Trading Calculators")],
+            [KeyboardButton(text="📚 Forex Academy")],
         ],
         resize_keyboard=True,
         is_persistent=True,
@@ -115,10 +91,8 @@ def main_keyboard() -> ReplyKeyboardMarkup:
 WELCOME_TEXT = (
     "<b>👋 Welcome to Gold Master Hub</b>\n\n"
     "Your central hub for gold trading resources and forex education.\n\n"
-    "Use the menu below to explore XAUUSD tools, trading calculators, market-session guides, "
-    "educational materials, and useful market references.\n\n"
-    "⚠️ <i>For educational and informational purposes only. This bot does not provide financial advice "
-    "or guarantee trading results.</i>"
+    "Use the three buttons below to access Gold Tools, Trading Calculators, and Forex Academy.\n\n"
+    "⚠️ <i>For educational and informational purposes only. This bot does not provide financial advice or guarantee trading results.</i>"
 )
 
 
@@ -130,6 +104,16 @@ class CalculatorStates(StatesGroup):
     profit_entry = State()
     profit_exit = State()
     profit_size = State()
+
+
+def parse_positive_number(value: str | None) -> float | None:
+    if not value:
+        return None
+    try:
+        number = float(value.replace(",", "").strip())
+    except (TypeError, ValueError):
+        return None
+    return number if number > 0 else None
 
 
 async def send_home(message: Message) -> None:
@@ -152,46 +136,48 @@ async def menu_handler(message: Message, state: FSMContext):
 @dp.message(Command("help"))
 async def help_handler(message: Message):
     remember_user(message)
-    text = (
+    await message.answer(
         "<b>🆘 Gold Master Hub Help</b>\n\n"
-        "Choose a section from the keyboard below.\n\n"
-        "<b>Gold Tools</b> — basic XAUUSD reference tools.\n"
-        "<b>Trading Calculators</b> — position sizing and P/L estimates.\n"
-        "<b>Market Sessions</b> — UTC session windows.\n"
-        "<b>Forex Academy</b> — trading concepts and terminology.\n"
-        "<b>Market Information</b> — general XAUUSD reference data.\n\n"
-        "Use /menu at any time to restore the main menu."
+        "Use the three main buttons below:\n\n"
+        "<b>📊 Gold Tools</b> — XAUUSD tools and trading references.\n"
+        "<b>🧮 Trading Calculators</b> — position sizing and P/L estimates.\n"
+        "<b>📚 Forex Academy</b> — forex concepts and education.\n\n"
+        "Commands:\n"
+        "/menu — restore the main menu\n"
+        "/help — show this help\n"
+        "/position — position-size calculator\n"
+        "/pnl — P/L calculator",
+        reply_markup=main_keyboard(),
     )
-    await message.answer(text, reply_markup=main_keyboard())
 
 
 @dp.message(F.text == "📊 Gold Tools")
 async def gold_tools_handler(message: Message):
     remember_user(message)
-    text = (
+    await message.answer(
         "<b>📊 Gold Tools</b>\n\n"
         "• XAUUSD symbol reference\n"
         "• Pip/point basics\n"
         "• Gold market terminology\n"
         "• Simple trading checklists\n\n"
         "<b>XAUUSD</b> represents gold priced in US dollars.\n\n"
-        "⚠️ Always confirm instrument specifications with your broker before trading."
+        "⚠️ Always confirm instrument specifications with your broker before trading.",
+        reply_markup=main_keyboard(),
     )
-    await message.answer(text, reply_markup=main_keyboard())
 
 
 @dp.message(F.text == "🧮 Trading Calculators")
 async def calculator_menu_handler(message: Message):
     remember_user(message)
-    text = (
+    await message.answer(
         "<b>🧮 Trading Calculators</b>\n\n"
-        "1. <b>Position Size</b>\n"
+        "<b>Position Size</b>\n"
         "Estimate position size from balance, risk %, and stop distance.\n\n"
-        "2. <b>Profit/Loss Estimate</b>\n"
+        "<b>Profit/Loss</b>\n"
         "Estimate gross P/L from entry, exit, and position size.\n\n"
-        "Send /position for the position-size calculator or /pnl for the P/L calculator."
+        "Use /position or /pnl to start a calculator.",
+        reply_markup=main_keyboard(),
     )
-    await message.answer(text, reply_markup=main_keyboard())
 
 
 @dp.message(Command("position"))
@@ -267,7 +253,8 @@ async def pnl_start(message: Message, state: FSMContext):
     await message.answer(
         "<b>🧮 Profit/Loss Calculator</b>\n\n"
         "Step 1/3: Enter your entry price.\n\n"
-        "Example: <code>2500</code>"
+        "Example: <code>2500</code>",
+        reply_markup=main_keyboard(),
     )
 
 
@@ -321,24 +308,10 @@ async def pnl_size(message: Message, state: FSMContext):
     )
 
 
-@dp.message(F.text == "🕒 Market Sessions")
-async def sessions_handler(message: Message):
-    remember_user(message)
-    text = (
-        "<b>🕒 Major Forex Sessions (UTC)</b>\n\n"
-        "🇦🇺 Sydney: approximately 22:00–07:00\n"
-        "🇯🇵 Tokyo: approximately 00:00–09:00\n"
-        "🇬🇧 London: approximately 08:00–17:00\n"
-        "🇺🇸 New York: approximately 13:00–22:00\n\n"
-        "Session times can shift because of daylight-saving changes. Treat these as general references and verify current market hours."
-    )
-    await message.answer(text, reply_markup=main_keyboard())
-
-
 @dp.message(F.text == "📚 Forex Academy")
 async def academy_handler(message: Message):
     remember_user(message)
-    text = (
+    await message.answer(
         "<b>📚 Forex Academy</b>\n\n"
         "<b>Risk Management</b>\n"
         "Learn how position size, stop distance, and account risk interact.\n\n"
@@ -348,134 +321,13 @@ async def academy_handler(message: Message):
         "A mechanism that can increase market exposure relative to account equity and also increase risk.\n\n"
         "<b>Volatility</b>\n"
         "The degree to which price moves over time. Gold can move rapidly around major economic events.\n\n"
-        "Educational content only — not financial advice."
-    )
-    await message.answer(text, reply_markup=main_keyboard())
-
-
-@dp.message(F.text == "📈 Market Information")
-async def market_info_handler(message: Message):
-    remember_user(message)
-    text = (
-        "<b>📈 XAUUSD Market Information</b>\n\n"
-        "XAUUSD is commonly quoted as gold priced in US dollars per troy ounce.\n\n"
-        "Gold can be influenced by factors such as:\n"
-        "• US dollar strength\n"
-        "• Interest-rate expectations\n"
-        "• Inflation expectations\n"
-        "• Central-bank policy\n"
-        "• Geopolitical risk\n"
-        "• Economic data and market sentiment\n\n"
-        "This section provides general educational information rather than live market data."
-    )
-    await message.answer(text, reply_markup=main_keyboard())
-
-
-@dp.message(F.text == "📰 Gold Market Updates")
-async def updates_handler(message: Message):
-    remember_user(message)
-    text = (
-        "<b>📰 Gold Market Updates</b>\n\n"
-        "This bot does not currently provide a live news feed.\n\n"
-        "For responsible market research, follow reputable financial-data sources and check economic calendars before making trading decisions.\n\n"
-        "You can add a live news/API integration later without changing the main menu."
-    )
-    await message.answer(text, reply_markup=main_keyboard())
-
-
-@dp.message(F.text == "⚙️ Settings")
-async def settings_handler(message: Message):
-    remember_user(message)
-    text = (
-        "<b>⚙️ Settings</b>\n\n"
-        "The main keyboard is kept visible for easier navigation.\n\n"
-        "Commands available:\n"
-        "/menu — show the main menu\n"
-        "/help — show help\n"
-        "/position — position-size calculator\n"
-        "/pnl — P/L calculator"
-    )
-    await message.answer(text, reply_markup=main_keyboard())
-
-
-@dp.message(F.text == "👤 Contact Admin")
-async def contact_admin_handler(message: Message):
-    remember_user(message)
-    admin_username = os.getenv("ADMIN_USERNAME", "")
-    if admin_username:
-        contact_line = f"Contact admin: @{escape(admin_username.lstrip('@'))}"
-    else:
-        contact_line = "Please configure ADMIN_USERNAME in the bot environment to display the admin contact."
-
-    await message.answer(
-        "<b>👤 Contact Admin</b>\n\n" + contact_line,
+        "Educational content only — not financial advice.",
         reply_markup=main_keyboard(),
     )
 
 
-@dp.message(Command("stats"))
-async def stats_handler(message: Message):
-    remember_user(message)
-
-    if not message.from_user or message.from_user.id not in ADMIN_IDS:
-        await message.answer("This command is available to admins only.")
-        return
-
-    connection = db_connect()
-    total_users = connection.execute("SELECT COUNT(*) FROM users").fetchone()[0]
-    active_7d = connection.execute(
-        "SELECT COUNT(*) FROM users WHERE last_seen >= ?",
-        ((datetime.now(timezone.utc)).timestamp() - 7 * 86400,),
-    ).fetchone()[0]
-    connection.close()
-
-    # The last_seen field is stored as ISO text, so perform the active calculation robustly.
-    connection = db_connect()
-    rows = connection.execute("SELECT last_seen FROM users").fetchall()
-    connection.close()
-
-    now = datetime.now(timezone.utc)
-    active_count = 0
-    for (last_seen,) in rows:
-        try:
-            dt = datetime.fromisoformat(last_seen)
-            if (now - dt).total_seconds() <= 7 * 86400:
-                active_count += 1
-        except ValueError:
-            continue
-
-    await message.answer(
-        "<b>📊 Gold Master Hub Stats</b>\n\n"
-        f"Total users: <code>{total_users}</code>\n"
-        f"Active in last 7 days: <code>{active_count}</code>\n\n"
-        f"Server time: <code>{now.strftime('%Y-%m-%d %H:%M UTC')}</code>"
-    )
-
-
-def parse_positive_number(text: str | None) -> float | None:
-    if not text:
-        return None
-    try:
-        value = float(text.replace(",", "").strip())
-    except ValueError:
-        return None
-    if value <= 0:
-        return None
-    return value
-
-
-@dp.message()
-async def fallback_handler(message: Message):
-    remember_user(message)
-    await message.answer(
-        "I didn't recognize that input. Use the buttons below or /help for the available options.",
-        reply_markup=main_keyboard(),
-    )
-
-
-async def main() -> None:
-    await bot.delete_webhook(drop_pending_updates=True)
-    logger.info("Gold Master Hub bot starting")
+async def main():
+    await db_connect().close() if False else None
     await dp.start_polling(bot)
 
 
