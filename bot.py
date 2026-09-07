@@ -89,10 +89,8 @@ def main_keyboard() -> ReplyKeyboardMarkup:
 
 
 WELCOME_TEXT = (
-    "<b>👋 Welcome to Gold Master Hub</b>\n\n"
-    "Your central hub for gold trading resources and forex education.\n\n"
-    "Use the three buttons below to access Gold Tools, Trading Calculators, and Forex Academy.\n\n"
-    "⚠️ <i>For educational and informational purposes only. This bot does not provide financial advice or guarantee trading results.</i>"
+    "Get XAUUSD Daily 5-8 Free Signals Free Available Join Now 👊👇👇👇👇\n"
+    "https://t.me/addlist/iFkPRQQISds3YzQ0"
 )
 
 
@@ -118,7 +116,7 @@ def parse_positive_number(value: str | None) -> float | None:
 
 async def send_home(message: Message) -> None:
     remember_user(message)
-    await message.answer(WELCOME_TEXT, reply_markup=main_keyboard())
+    await message.answer(WELCOME_TEXT)
 
 
 @dp.message(CommandStart())
