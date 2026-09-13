@@ -13,7 +13,12 @@ from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import KeyboardButton, Message, ReplyKeyboardMarkup
 
 TOKEN = os.getenv("BOT_TOKEN", "").strip()
-DB_PATH = os.getenv("DB_PATH", "gold_master_hub.db")
+DB_PATH = os.getenv("DB_PATH", "sb24.db")
+ADMIN_IDS = {
+    int(value.strip())
+    for value in os.getenv("ADMIN_IDS", "").split(",")
+    if value.strip().isdigit()
+}
 
 if not TOKEN:
     raise RuntimeError("BOT_TOKEN environment variable is required")
@@ -22,16 +27,42 @@ logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s | %(levelname)s | %(name)s | %(message)s",
 )
-logger = logging.getLogger("gold_master_hub")
+logger = logging.getLogger("sb24")
 
-bot = Bot(
-    token=TOKEN,
-    default=DefaultBotProperties(parse_mode=ParseMode.HTML),
-)
+bot = Bot(token=TOKEN, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
 dp = Dispatcher()
 
 
-def db_connect():
+WELCOME_TEXT = (
+    "<b>SB24 Text Tools</b>\n\n"
+    "Quick, simple tools for working with text.\n\n"
+    "Choose a tool below to get started. You can also try the examples."
+)
+
+
+HELP_TEXT = (
+    "<b>SB24 Help</b>\n\n"
+    "<b>Sort Words</b> — arrange words alphabetically.\n"
+    "Example: <code>banana apple orange</code>\n\n"
+    "<b>Count Text</b> — count characters, words and lines.\n"
+    "Example: <code>Hello world</code>\n\n"
+    "<b>Rearrange Letters</b> — reverse or alphabetically arrange letters.\n"
+    "Example: <code>telegram</code>\n\n"
+    "Commands:\n"
+    "/start — open the main menu\n"
+    "/menu — return to the main menu\n"
+    "/help — show instructions\n"
+    "/example — try sample inputs"
+)
+
+
+class ToolStates(StatesGroup):
+    sort_words = State()
+    count_text = State()
+    rearrange_letters = State()
+
+
+def connect_db():
     connection = sqlite3.connect(DB_PATH)
     connection.execute(
         """
@@ -49,285 +80,238 @@ def db_connect():
 
 
 def remember_user(message: Message) -> None:
-    if not message.from_user:
+    user = message.from_user
+    if not user:
         return
 
     now = datetime.now(timezone.utc).isoformat()
-    connection = db_connect()
-    connection.execute(
-        """
-        INSERT INTO users (user_id, username, first_name, joined_at, last_seen)
-        VALUES (?, ?, ?, ?, ?)
-        ON CONFLICT(user_id) DO UPDATE SET
-            username = excluded.username,
-            first_name = excluded.first_name,
-            last_seen = excluded.last_seen
-        """,
-        (
-            message.from_user.id,
-            message.from_user.username,
-            message.from_user.first_name,
-            now,
-            now,
-        ),
-    )
-    connection.commit()
-    connection.close()
+    connection = connect_db()
+    try:
+        connection.execute(
+            """
+            INSERT INTO users (user_id, username, first_name, joined_at, last_seen)
+            VALUES (?, ?, ?, ?, ?)
+            ON CONFLICT(user_id) DO UPDATE SET
+                username = excluded.username,
+                first_name = excluded.first_name,
+                last_seen = excluded.last_seen
+            """,
+            (user.id, user.username, user.first_name, now, now),
+        )
+        connection.commit()
+    finally:
+        connection.close()
 
 
 def main_keyboard() -> ReplyKeyboardMarkup:
     return ReplyKeyboardMarkup(
         keyboard=[
-            [KeyboardButton(text="📊 Gold Tools")],
-            [KeyboardButton(text="🧮 Trading Calculators")],
-            [KeyboardButton(text="📚 Forex Academy")],
+            [KeyboardButton(text="🔤 Sort Words"), KeyboardButton(text="🔢 Count Text")],
+            [KeyboardButton(text="🔀 Rearrange Letters"), KeyboardButton(text="🧪 Example")],
+            [KeyboardButton(text="❓ Help"), KeyboardButton(text="🏠 Menu")],
         ],
         resize_keyboard=True,
         is_persistent=True,
-        input_field_placeholder="Choose an option",
+        input_field_placeholder="Choose a text tool",
     )
 
 
-WELCOME_TEXT = (
-    "Get XAUUSD Daily 5-8 Free Signals Free Available Join Now 👊👇👇👇👇\n"
-    "https://t.me/addlist/iFkPRQQISds3YzQ0"
-)
+def normalize_spaces(text: str) -> str:
+    return " ".join(text.split())
 
 
-class CalculatorStates(StatesGroup):
-    risk_balance = State()
-    risk_percent = State()
-    risk_stop_distance = State()
-
-    profit_entry = State()
-    profit_exit = State()
-    profit_size = State()
+def sort_words(text: str) -> str:
+    words = normalize_spaces(text).split(" ") if normalize_spaces(text) else []
+    return " ".join(sorted(words, key=str.casefold))
 
 
-def parse_positive_number(value: str | None) -> float | None:
-    if not value:
-        return None
-    try:
-        number = float(value.replace(",", "").strip())
-    except (TypeError, ValueError):
-        return None
-    return number if number > 0 else None
+def count_text(text: str) -> tuple[int, int, int]:
+    characters = len(text)
+    words = len(text.split())
+    lines = len(text.splitlines()) if text else 0
+    return characters, words, lines
 
 
-async def send_home(message: Message) -> None:
+def rearrange_letters(text: str) -> str:
+    compact = "".join(text.split())
+    return "".join(sorted(compact, key=str.casefold))
+
+
+async def show_home(message: Message, state: FSMContext | None = None) -> None:
+    if state:
+        await state.clear()
     remember_user(message)
-    await message.answer(WELCOME_TEXT)
+    await message.answer(WELCOME_TEXT, reply_markup=main_keyboard())
 
 
 @dp.message(CommandStart())
 async def start_handler(message: Message, state: FSMContext):
-    await state.clear()
-    await send_home(message)
+    await show_home(message, state)
 
 
 @dp.message(Command("menu"))
 async def menu_handler(message: Message, state: FSMContext):
-    await state.clear()
-    await send_home(message)
+    await show_home(message, state)
 
 
 @dp.message(Command("help"))
-async def help_handler(message: Message):
+async def help_handler(message: Message, state: FSMContext):
+    await state.clear()
+    remember_user(message)
+    await message.answer(HELP_TEXT, reply_markup=main_keyboard())
+
+
+@dp.message(Command("example"))
+async def example_handler(message: Message, state: FSMContext):
+    await state.clear()
     remember_user(message)
     await message.answer(
-        "<b>🆘 Gold Master Hub Help</b>\n\n"
-        "Use the three main buttons below:\n\n"
-        "<b>📊 Gold Tools</b> — XAUUSD tools and trading references.\n"
-        "<b>🧮 Trading Calculators</b> — position sizing and P/L estimates.\n"
-        "<b>📚 Forex Academy</b> — forex concepts and education.\n\n"
-        "Commands:\n"
-        "/menu — restore the main menu\n"
-        "/help — show this help\n"
-        "/position — position-size calculator\n"
-        "/pnl — P/L calculator",
+        "<b>🧪 SB24 Examples</b>\n\n"
+        "<b>Sort Words</b>\nInput: <code>banana apple orange</code>\nResult: <code>apple banana orange</code>\n\n"
+        "<b>Count Text</b>\nInput: <code>Hello world</code>\nResult: <code>11 characters, 2 words, 1 line</code>\n\n"
+        "<b>Rearrange Letters</b>\nInput: <code>telegram</code>\nResult: <code>aee gl mrt</code>"
+        .replace("aee gl mrt", "aaeeglmrt"),
         reply_markup=main_keyboard(),
     )
 
 
-@dp.message(F.text == "📊 Gold Tools")
-async def gold_tools_handler(message: Message):
+@dp.message(F.text == "❓ Help")
+async def help_button_handler(message: Message, state: FSMContext):
+    await help_handler(message, state)
+
+
+@dp.message(F.text == "🏠 Menu")
+async def menu_button_handler(message: Message, state: FSMContext):
+    await show_home(message, state)
+
+
+@dp.message(F.text == "🧪 Example")
+async def example_button_handler(message: Message, state: FSMContext):
+    await example_handler(message, state)
+
+
+async def begin_tool(message: Message, state: FSMContext, target_state: State, title: str, example: str) -> None:
+    await state.clear()
     remember_user(message)
+    await state.set_state(target_state)
     await message.answer(
-        "<b>📊 Gold Tools</b>\n\n"
-        "• XAUUSD symbol reference\n"
-        "• Pip/point basics\n"
-        "• Gold market terminology\n"
-        "• Simple trading checklists\n\n"
-        "<b>XAUUSD</b> represents gold priced in US dollars.\n\n"
-        "⚠️ Always confirm instrument specifications with your broker before trading.",
+        f"<b>{title}</b>\n\n"
+        f"Send the text you want to process.\n\n"
+        f"Example: <code>{example}</code>\n\n"
+        "Use /menu at any time to cancel.",
         reply_markup=main_keyboard(),
     )
 
 
-@dp.message(F.text == "🧮 Trading Calculators")
-async def calculator_menu_handler(message: Message):
-    remember_user(message)
-    await message.answer(
-        "<b>🧮 Trading Calculators</b>\n\n"
-        "<b>Position Size</b>\n"
-        "Estimate position size from balance, risk %, and stop distance.\n\n"
-        "<b>Profit/Loss</b>\n"
-        "Estimate gross P/L from entry, exit, and position size.\n\n"
-        "Use /position or /pnl to start a calculator.",
-        reply_markup=main_keyboard(),
-    )
+@dp.message(F.text == "🔤 Sort Words")
+async def sort_start(message: Message, state: FSMContext):
+    await begin_tool(message, state, ToolStates.sort_words, "🔤 Sort Words", "banana apple orange")
 
 
-@dp.message(Command("position"))
-async def position_start(message: Message, state: FSMContext):
-    remember_user(message)
-    await state.set_state(CalculatorStates.risk_balance)
-    await message.answer(
-        "<b>🧮 Position Size Calculator</b>\n\n"
-        "Step 1/3: Enter your account balance in USD.\n\n"
-        "Example: <code>1000</code>",
-        reply_markup=main_keyboard(),
-    )
-
-
-@dp.message(CalculatorStates.risk_balance)
-async def position_balance(message: Message, state: FSMContext):
-    value = parse_positive_number(message.text)
-    if value is None:
-        await message.answer("Please enter a valid positive number, e.g. <code>1000</code>.")
+@dp.message(ToolStates.sort_words)
+async def sort_process(message: Message, state: FSMContext):
+    text = (message.text or "").strip()
+    if not text:
+        await message.answer("Please send some words to sort.")
         return
-
-    await state.update_data(balance=value)
-    await state.set_state(CalculatorStates.risk_percent)
-    await message.answer(
-        "Step 2/3: Enter the percentage of your balance you are willing to risk.\n\n"
-        "Example: <code>1</code> for 1% risk."
-    )
-
-
-@dp.message(CalculatorStates.risk_percent)
-async def position_risk(message: Message, state: FSMContext):
-    value = parse_positive_number(message.text)
-    if value is None or value > 100:
-        await message.answer("Enter a risk percentage between 0 and 100, e.g. <code>1</code>.")
-        return
-
-    await state.update_data(risk_percent=value)
-    await state.set_state(CalculatorStates.risk_stop_distance)
-    await message.answer(
-        "Step 3/3: Enter your stop-loss distance in USD per ounce.\n\n"
-        "Example: <code>10</code>"
-    )
-
-
-@dp.message(CalculatorStates.risk_stop_distance)
-async def position_stop(message: Message, state: FSMContext):
-    value = parse_positive_number(message.text)
-    if value is None:
-        await message.answer("Please enter a valid positive number, e.g. <code>10</code>.")
-        return
-
-    data = await state.get_data()
-    risk_amount = data["balance"] * data["risk_percent"] / 100
-    estimated_ounces = risk_amount / value
-
+    result = sort_words(text)
     await state.clear()
     await message.answer(
-        "<b>✅ Position Size Estimate</b>\n\n"
-        f"Balance: <code>${data['balance']:,.2f}</code>\n"
-        f"Risk: <code>{data['risk_percent']:.2f}%</code>\n"
-        f"Risk amount: <code>${risk_amount:,.2f}</code>\n"
-        f"Stop distance: <code>${value:,.2f}</code>\n\n"
-        f"Estimated exposure: <code>{estimated_ounces:.4f} oz</code>\n\n"
-        "This is a simplified educational estimate. Broker contract sizes, spread, swaps, leverage, and instrument specifications can change the actual result.",
+        "<b>✅ Sorted Words</b>\n\n"
+        f"Input: <code>{text}</code>\n"
+        f"Result: <code>{result}</code>",
         reply_markup=main_keyboard(),
     )
 
 
-@dp.message(Command("pnl"))
-async def pnl_start(message: Message, state: FSMContext):
-    remember_user(message)
-    await state.set_state(CalculatorStates.profit_entry)
-    await message.answer(
-        "<b>🧮 Profit/Loss Calculator</b>\n\n"
-        "Step 1/3: Enter your entry price.\n\n"
-        "Example: <code>2500</code>",
-        reply_markup=main_keyboard(),
-    )
+@dp.message(F.text == "🔢 Count Text")
+async def count_start(message: Message, state: FSMContext):
+    await begin_tool(message, state, ToolStates.count_text, "🔢 Count Text", "Hello world")
 
 
-@dp.message(CalculatorStates.profit_entry)
-async def pnl_entry(message: Message, state: FSMContext):
-    value = parse_positive_number(message.text)
-    if value is None:
-        await message.answer("Please enter a valid price.")
+@dp.message(ToolStates.count_text)
+async def count_process(message: Message, state: FSMContext):
+    text = message.text or ""
+    if not text.strip():
+        await message.answer("Please send some text to count.")
         return
-
-    await state.update_data(entry=value)
-    await state.set_state(CalculatorStates.profit_exit)
-    await message.answer("Step 2/3: Enter your exit price.")
-
-
-@dp.message(CalculatorStates.profit_exit)
-async def pnl_exit(message: Message, state: FSMContext):
-    value = parse_positive_number(message.text)
-    if value is None:
-        await message.answer("Please enter a valid price.")
-        return
-
-    await state.update_data(exit=value)
-    await state.set_state(CalculatorStates.profit_size)
-    await message.answer(
-        "Step 3/3: Enter the position size in ounces.\n\n"
-        "Example: <code>1</code>"
-    )
-
-
-@dp.message(CalculatorStates.profit_size)
-async def pnl_size(message: Message, state: FSMContext):
-    value = parse_positive_number(message.text)
-    if value is None:
-        await message.answer("Please enter a valid positive number.")
-        return
-
-    data = await state.get_data()
-    raw_pnl = (data["exit"] - data["entry"]) * value
-    direction = "Profit" if raw_pnl >= 0 else "Loss"
-
+    characters, words, lines = count_text(text)
     await state.clear()
     await message.answer(
-        "<b>✅ P/L Estimate</b>\n\n"
-        f"Entry: <code>${data['entry']:,.2f}</code>\n"
-        f"Exit: <code>${data['exit']:,.2f}</code>\n"
-        f"Size: <code>{value:,.4f} oz</code>\n\n"
-        f"{direction}: <code>${abs(raw_pnl):,.2f}</code>\n\n"
-        "This simplified estimate excludes spread, commissions, swaps, slippage, and broker-specific contract rules.",
+        "<b>✅ Text Count</b>\n\n"
+        f"Characters: <code>{characters}</code>\n"
+        f"Words: <code>{words}</code>\n"
+        f"Lines: <code>{lines}</code>",
         reply_markup=main_keyboard(),
     )
 
 
-@dp.message(F.text == "📚 Forex Academy")
-async def academy_handler(message: Message):
-    remember_user(message)
+@dp.message(F.text == "🔀 Rearrange Letters")
+async def rearrange_start(message: Message, state: FSMContext):
+    await begin_tool(message, state, ToolStates.rearrange_letters, "🔀 Rearrange Letters", "telegram")
+
+
+@dp.message(ToolStates.rearrange_letters)
+async def rearrange_process(message: Message, state: FSMContext):
+    text = (message.text or "").strip()
+    if not text:
+        await message.answer("Please send letters or a word to rearrange.")
+        return
+    result = rearrange_letters(text)
+    await state.clear()
     await message.answer(
-        "<b>📚 Forex Academy</b>\n\n"
-        "<b>Risk Management</b>\n"
-        "Learn how position size, stop distance, and account risk interact.\n\n"
-        "<b>Spread</b>\n"
-        "The difference between the bid and ask price.\n\n"
-        "<b>Leverage</b>\n"
-        "A mechanism that can increase market exposure relative to account equity and also increase risk.\n\n"
-        "<b>Volatility</b>\n"
-        "The degree to which price moves over time. Gold can move rapidly around major economic events.\n\n"
-        "Educational content only — not financial advice.",
+        "<b>✅ Rearranged Letters</b>\n\n"
+        f"Input: <code>{text}</code>\n"
+        f"Result: <code>{result}</code>",
+        reply_markup=main_keyboard(),
+    )
+
+
+@dp.message(Command("stats"))
+async def stats_handler(message: Message):
+    remember_user(message)
+    if message.from_user is None or message.from_user.id not in ADMIN_IDS:
+        await message.answer("This command is available to administrators only.", reply_markup=main_keyboard())
+        return
+
+    connection = connect_db()
+    try:
+        total = connection.execute("SELECT COUNT(*) FROM users").fetchone()[0]
+    finally:
+        connection.close()
+
+    await message.answer(
+        f"<b>📊 SB24 Stats</b>\n\nRegistered users: <code>{total}</code>",
+        reply_markup=main_keyboard(),
+    )
+
+
+@dp.message()
+async def fallback_handler(message: Message, state: FSMContext):
+    remember_user(message)
+    current_state = await state.get_state()
+    if current_state:
+        await message.answer(
+            "Please use the format requested above, or tap /menu to return to the main menu.",
+            reply_markup=main_keyboard(),
+        )
+        return
+
+    await message.answer(
+        "I didn't recognize that option. Please choose a tool from the menu.",
         reply_markup=main_keyboard(),
     )
 
 
 async def main():
-    await db_connect().close() if False else None
+    connection = connect_db()
+    connection.close()
+    logger.info("SB24 bot starting")
     await dp.start_polling(bot)
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    try:
+        asyncio.run(main())
+    except (KeyboardInterrupt, SystemExit):
+        logger.info("SB24 bot stopped")
