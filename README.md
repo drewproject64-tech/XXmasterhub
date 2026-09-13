@@ -1,27 +1,25 @@
-# Gold Master Hub
+# SB24 Text Tools
 
-Telegram bot providing XAUUSD/gold trading tools, calculators, market-session references, and forex education.
+Telegram bot for simple, everyday text utilities.
 
 ## Features
 
-- Persistent Telegram reply keyboard below the chat box
-- Gold/XAUUSD reference tools
-- Position-size calculator
-- Profit/loss calculator
-- Major forex session references
-- Forex education basics
-- General market information
+- Persistent reply keyboard below the chat box
+- Sort words alphabetically
+- Count characters, words, and lines
+- Rearrange letters alphabetically
+- Built-in examples for easy testing
+- `/start`, `/menu`, and `/help` commands
 - Admin-only `/stats`
 - SQLite user tracking
 - Render worker deployment configuration
 
 ## Environment variables
 
-Set these environment variables on your hosting platform:
+Set these variables on your hosting platform:
 
 - `BOT_TOKEN` — Telegram BotFather token
 - `ADMIN_IDS` — comma-separated Telegram numeric admin IDs
-- `ADMIN_USERNAME` — optional admin username shown in Contact Admin
 - `DB_PATH` — optional SQLite path
 
 ## Run locally
@@ -31,4 +29,4 @@ pip install -r requirements.txt
 python bot.py
 ```
 
-The bot is educational/informational and does not provide financial advice or guarantee trading results.
+SB24 is designed as a simple text utility bot. It does not provide financial advice, investment signals, or guaranteed results.
